@@ -23,7 +23,8 @@
       else { throw NativeOSPartitionError.invalidMetadata }
       let selected = templates.filter {
         let target = $0[PublishedContractNames.osTargetKey] as? String
-        return target == PublishedContractNames.fullOSTarget || target == PublishedContractNames.uefiTarget
+        return target == PublishedContractNames.fullOSTarget
+          || target == PublishedContractNames.uefiTarget
       }
       guard selected.count == 1, let template = selected.first,
         let label = template["default_os_name"] as? String, !label.isEmpty,
@@ -90,10 +91,13 @@
           }
           let excluded = CharacterSet(charactersIn: "*?/\\|,;:+=<>[]\"")
           let clean = (name + " - " + label).unicodeScalars.filter { !excluded.contains($0) }
-          let ascii = String(String.UnicodeScalarView(clean)).decomposedStringWithCompatibilityMapping
+          let ascii = String(String.UnicodeScalarView(clean))
+            .decomposedStringWithCompatibilityMapping
             .unicodeScalars.filter { $0.isASCII && $0.value >= 32 && $0.value != 127 }
           let fatLabel = String(String.UnicodeScalarView(ascii).prefix(11))
-          guard index != 0 || !fatLabel.isEmpty else { throw NativeOSPartitionError.invalidMetadata }
+          guard index != 0 || !fatLabel.isEmpty else {
+            throw NativeOSPartitionError.invalidMetadata
+          }
           result.append(
             Part(
               name: name, type: type, bytes: bytes,

@@ -58,7 +58,9 @@
       var icon = PublishedContractNames.legacyVolumeIcon
       var filesystem: String?
       if let layout = template["layout_kind"], !(layout is NSNull) {
-        guard let layout = layout as? String else { throw NativePayloadPreflightError.invalidMetadata }
+        guard let layout = layout as? String else {
+          throw NativePayloadPreflightError.invalidMetadata
+        }
         if layout == "uefi-v1" {
           guard isUEFI, template["installation_profile"] as? String == "uefi" else {
             throw NativePayloadPreflightError.invalidMetadata
@@ -120,9 +122,14 @@
       }
       try await archive.validateEntries()
       let members = Dictionary(uniqueKeysWithValues: archive.members.map { ($0.name, $0) })
-      let requiredMembers = isUEFI
-        ? ["esp/m1n1/boot.bin", icon]
-        : ["boot.img", "root.img", "esp/m1n1/boot.bin", "esp/EFI/BOOT/BOOTAA64.EFI", icon]
+      let requiredMembers: [String]
+      if isUEFI {
+        requiredMembers = ["esp/m1n1/boot.bin", icon]
+      } else {
+        requiredMembers = [
+          "boot.img", "root.img", "esp/m1n1/boot.bin", "esp/EFI/BOOT/BOOTAA64.EFI", icon,
+        ]
+      }
       for name in requiredMembers {
         guard let member = members[name], !member.isDirectory, member.sizeBytes > 0 else {
           throw NativePayloadPreflightError.invalidPayload
@@ -208,7 +215,8 @@
       else { throw NativePayloadPreflightError.invalidMetadata }
       let matches = templates.filter {
         let target = $0[PublishedContractNames.osTargetKey] as? String
-        return target == PublishedContractNames.fullOSTarget || target == PublishedContractNames.uefiTarget
+        return target == PublishedContractNames.fullOSTarget
+          || target == PublishedContractNames.uefiTarget
       }
       guard matches.count == 1, let template = matches.first else {
         throw NativePayloadPreflightError.invalidMetadata

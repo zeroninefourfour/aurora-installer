@@ -81,8 +81,8 @@ struct AuroraWelcomeView: View {
     case .nixos:
       "Aurora NixOS is based on NixOS and is not provided or endorsed by the NixOS project."
     case .uefi:
-      "UEFI Environment Only provides U-Boot and aura and is not provided or endorsed by Apple Inc. "
-        + "It configures the boot environment without installing an OS distribution."
+      "UEFI Environment Only provides U-Boot and aura and is not provided or endorsed by "
+        + "Apple Inc. It configures the boot environment without installing an OS distribution."
     }
   }
 
