@@ -47,6 +47,9 @@
     /// are never used by this execution path.
     static func validate(metadata: Data, payloadName: String, archive: IPSWArchive) async throws {
       let template = try target(metadata)
+      let isUEFI =
+        template[PublishedContractNames.osTargetKey] as? String == PublishedContractNames.uefiTarget
+        || ((template["partitions"] as? [[String: Any]])?.count == 1)
       let contracts = [
         "fedora-btrfs-v1": ("fedora", "btrfs"), "alarm-ext4-v1": ("arch", "ext4"),
         "alarm-btrfs-v1": ("arch", "btrfs"), "nixos-ext4-v1": ("nixos", "ext4"),
@@ -55,12 +58,24 @@
       var icon = PublishedContractNames.legacyVolumeIcon
       var filesystem: String?
       if let layout = template["layout_kind"], !(layout is NSNull) {
-        guard let layout = layout as? String, let contract = contracts[layout],
-          let profile = template["installation_profile"] as? String,
-          ["kde", "gnome", "minimal"].map({ contract.0 + "-" + $0 }).contains(profile)
-        else { throw NativePayloadPreflightError.invalidMetadata }
-        icon = "aurora-volume.icns"
-        filesystem = contract.1
+        guard let layout = layout as? String else { throw NativePayloadPreflightError.invalidMetadata }
+        if layout == "uefi-v1" {
+          guard isUEFI, template["installation_profile"] as? String == "uefi" else {
+            throw NativePayloadPreflightError.invalidMetadata
+          }
+          icon = "aurora-volume.icns"
+        } else {
+          guard let contract = contracts[layout],
+            let profile = template["installation_profile"] as? String,
+            ["kde", "gnome", "minimal"].map({ contract.0 + "-" + $0 }).contains(profile)
+          else { throw NativePayloadPreflightError.invalidMetadata }
+          icon = "aurora-volume.icns"
+          filesystem = contract.1
+        }
+      } else if isUEFI {
+        if let profile = template["installation_profile"] as? String {
+          guard profile == "uefi" else { throw NativePayloadPreflightError.invalidMetadata }
+        }
       }
       guard template["package"] as? String == payloadName,
         // aura.bin names aura's Stage 1; payloads made before aura name it
@@ -74,64 +89,82 @@
       {
         throw NativePayloadPreflightError.unsupportedRecovery
       }
-      guard let partitions = template["partitions"] as? [[String: Any]], partitions.count == 3
+      guard let partitions = template["partitions"] as? [[String: Any]],
+        isUEFI ? partitions.count == 1 : partitions.count == 3
       else { throw NativePayloadPreflightError.invalidPartitions }
-      for (index, partition) in partitions.enumerated() {
-        let source = partition["source"]
-        let image = partition["image"]
-        guard partition["name"] as? String == ["EFI", "Boot", "Root"][index],
-          partition["type"] as? String == (index == 0 ? "EFI" : "Linux"),
-          index == 0 ? source as? String == "esp" : absent(source),
-          index == 0 ? absent(image) : image as? String == ["", "boot.img", "root.img"][index],
-          try flag(partition["expand"], default: false) == (index == 2)
+      if isUEFI {
+        let partition = partitions[0]
+        guard partition["name"] as? String == "EFI",
+          partition["type"] as? String == "EFI",
+          partition["source"] as? String == "esp",
+          absent(partition["image"]),
+          partition["format"] as? String == "fat",
+          try flag(partition["copy_firmware"]) == true,
+          try flag(partition["copy_installer_data"]) == true
+        else { throw NativePayloadPreflightError.invalidPartitions }
+      } else {
+        for (index, partition) in partitions.enumerated() {
+          let source = partition["source"]
+          let image = partition["image"]
+          guard partition["name"] as? String == ["EFI", "Boot", "Root"][index],
+            partition["type"] as? String == (index == 0 ? "EFI" : "Linux"),
+            index == 0 ? source as? String == "esp" : absent(source),
+            index == 0 ? absent(image) : image as? String == ["", "boot.img", "root.img"][index],
+            try flag(partition["expand"], default: false) == (index == 2)
+          else { throw NativePayloadPreflightError.invalidPartitions }
+        }
+        guard partitions[0]["format"] as? String == "fat",
+          try flag(partitions[0]["copy_firmware"]) == true,
+          try flag(partitions[0]["copy_installer_data"]) == true
         else { throw NativePayloadPreflightError.invalidPartitions }
       }
-      guard partitions[0]["format"] as? String == "fat",
-        try flag(partitions[0]["copy_firmware"]) == true,
-        try flag(partitions[0]["copy_installer_data"]) == true
-      else { throw NativePayloadPreflightError.invalidPartitions }
       try await archive.validateEntries()
       let members = Dictionary(uniqueKeysWithValues: archive.members.map { ($0.name, $0) })
-      for name in ["boot.img", "root.img", "esp/m1n1/boot.bin", "esp/EFI/BOOT/BOOTAA64.EFI", icon] {
+      let requiredMembers = isUEFI
+        ? ["esp/m1n1/boot.bin", icon]
+        : ["boot.img", "root.img", "esp/m1n1/boot.bin", "esp/EFI/BOOT/BOOTAA64.EFI", icon]
+      for name in requiredMembers {
         guard let member = members[name], !member.isDirectory, member.sizeBytes > 0 else {
           throw NativePayloadPreflightError.invalidPayload
         }
       }
-      var bootHeader: Data?
-      for (index, name) in ["boot.img", "root.img"].enumerated() {
-        guard let size = partitions[index + 1]["size"] as? String,
-          let capacity = try? NativeInstallationMetadata.bytes(size),
-          let member = members[name], UInt64(member.sizeBytes) <= capacity,
-          member.sizeBytes % 4096 == 0
-        else { throw NativePayloadPreflightError.invalidPartitions }
-        if let filesystem {
-          let header = try await archive.readPrefix(member, maximumBytes: 0x11000)
-          let offset = index == 0 || filesystem == "ext4" ? 0x438 : 0x10040
-          let magic = offset == 0x438 ? Data([0x53, 0xef]) : Data("_BHRfS_M".utf8)
-          guard header.count >= offset + magic.count,
-            header.subdata(in: offset..<(offset + magic.count)) == magic
-          else { throw NativePayloadPreflightError.invalidFilesystem }
-          if index == 0 { bootHeader = header }
+      if !isUEFI {
+        var bootHeader: Data?
+        for (index, name) in ["boot.img", "root.img"].enumerated() {
+          guard let size = partitions[index + 1]["size"] as? String,
+            let capacity = try? NativeInstallationMetadata.bytes(size),
+            let member = members[name], UInt64(member.sizeBytes) <= capacity,
+            member.sizeBytes % 4096 == 0
+          else { throw NativePayloadPreflightError.invalidPartitions }
+          if let filesystem {
+            let header = try await archive.readPrefix(member, maximumBytes: 0x11000)
+            let offset = index == 0 || filesystem == "ext4" ? 0x438 : 0x10040
+            let magic = offset == 0x438 ? Data([0x53, 0xef]) : Data("_BHRfS_M".utf8)
+            guard header.count >= offset + magic.count,
+              header.subdata(in: offset..<(offset + magic.count)) == magic
+            else { throw NativePayloadPreflightError.invalidFilesystem }
+            if index == 0 { bootHeader = header }
+          }
         }
-      }
-      if (template["installation_profile"] as? String)?.hasPrefix("nixos-") == true {
-        // Installation moves Boot to another GPT slot. Its EFI loader must
-        // locate the filesystem by UUID, not the source image's slot number.
-        guard let bootHeader, let member = members["esp/EFI/BOOT/BOOTAA64.EFI"],
-          member.sizeBytes <= 16 << 20
-        else { throw NativePayloadPreflightError.invalidPayload }
-        // GRUB without a built-in prefix reads grub.cfg beside itself.
-        var config: Data?
-        if let entry = members["esp/EFI/BOOT/grub.cfg"], !entry.isDirectory,
-          entry.sizeBytes <= 64 << 10
-        {
-          config = try await archive.read(entry, maximumBytes: 64 << 10)
+        if (template["installation_profile"] as? String)?.hasPrefix("nixos-") == true {
+          // Installation moves Boot to another GPT slot. Its EFI loader must
+          // locate the filesystem by UUID, not the source image's slot number.
+          guard let bootHeader, let member = members["esp/EFI/BOOT/BOOTAA64.EFI"],
+            member.sizeBytes <= 16 << 20
+          else { throw NativePayloadPreflightError.invalidPayload }
+          // GRUB without a built-in prefix reads grub.cfg beside itself.
+          var config: Data?
+          if let entry = members["esp/EFI/BOOT/grub.cfg"], !entry.isDirectory,
+            entry.sizeBytes <= 64 << 10
+          {
+            config = try await archive.read(entry, maximumBytes: 64 << 10)
+          }
+          guard
+            portableGRUB(
+              bootHeader: bootHeader,
+              efi: try await archive.read(member, maximumBytes: 16 << 20), config: config)
+          else { throw NativePayloadPreflightError.invalidPayload }
         }
-        guard
-          portableGRUB(
-            bootHeader: bootHeader,
-            efi: try await archive.read(member, maximumBytes: 16 << 20), config: config)
-        else { throw NativePayloadPreflightError.invalidPayload }
       }
     }
 
@@ -174,7 +207,8 @@
         Set(document.keys) == ["os_list"], let templates = document["os_list"] as? [[String: Any]]
       else { throw NativePayloadPreflightError.invalidMetadata }
       let matches = templates.filter {
-        $0[PublishedContractNames.osTargetKey] as? String == PublishedContractNames.fullOSTarget
+        let target = $0[PublishedContractNames.osTargetKey] as? String
+        return target == PublishedContractNames.fullOSTarget || target == PublishedContractNames.uefiTarget
       }
       guard matches.count == 1, let template = matches.first else {
         throw NativePayloadPreflightError.invalidMetadata

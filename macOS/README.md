@@ -43,7 +43,7 @@ The native executor is `NativeInstallerExecutor`. Signed schema-5 catalogs selec
 
 ## Images and releases
 
-The nine distribution/desktop profiles and their payloads are maintained in [aurora-distributions](https://github.com/aurora-silicon/aurora-distributions). Image producers live in [fedora-aurora](https://github.com/aurora-silicon/fedora-aurora), [alarm-aurora](https://github.com/aurora-silicon/alarm-aurora) and [nixos-aurora](https://github.com/aurora-silicon/nixos-aurora).
+The nine distribution/desktop profiles, the standalone UEFI-only profile and their payloads are maintained in [aurora-distributions](https://github.com/aurora-silicon/aurora-distributions). Image producers live in [fedora-aurora](https://github.com/aurora-silicon/fedora-aurora), [alarm-aurora](https://github.com/aurora-silicon/alarm-aurora) and [nixos-aurora](https://github.com/aurora-silicon/nixos-aurora).
 
 Catalogs bind the selected profile and exact artifact hashes. Firmware and calibration are collected from the target Mac. Names required by existing installations and released payloads are recorded in `Sources/AuroraAppleInstaller/PublishedContractNames.swift`.
 

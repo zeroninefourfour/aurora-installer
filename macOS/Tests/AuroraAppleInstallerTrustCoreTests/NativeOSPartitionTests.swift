@@ -38,6 +38,29 @@
       }
     }
 
+    func testUEFIOnlyPartitionPlanCreatesSingleEFIPartition() throws {
+      let uefiMetadata = try JSONSerialization.data(withJSONObject: [
+        "os_list": [
+          [
+            "omarchy_target": "apple-silicon-uefi", "default_os_name": "UEFI boot",
+            "partitions": [
+              [
+                "name": "EFI", "type": "EFI", "source": "esp", "format": "fat", "size": "500MB",
+                "volume_id": "0x1234ABCD",
+              ]
+            ],
+          ]
+        ]
+      ])
+      let layout = try NativeOSPartitionPlan(metadata: uefiMetadata, available: 500 * 1000 * 1000)
+      XCTAssertEqual(layout.parts.count, 1)
+      XCTAssertEqual(layout.parts[0].name, "EFI")
+      XCTAssertEqual(layout.parts[0].type, "EFI")
+      XCTAssertEqual(layout.parts[0].bytes, 500 * 1000 * 1000)
+      XCTAssertEqual(layout.parts[0].fatLabel, "EFI - UEFI")
+      XCTAssertEqual(layout.parts[0].volumeID, "0x1234ABCD")
+    }
+
     func testInvalidMetadataIsRejectedBeforeAnyDiskCommand() throws {
       for fault in ["type", "expand", "format", "source", "volume_id", "size"] {
         var document = try JSONSerialization.jsonObject(with: Self.metadata()) as! [String: Any]

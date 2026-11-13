@@ -6,8 +6,10 @@
 public enum PublishedContractNames {
   /// Payload metadata: the `os_list` key that marks the full-OS template.
   public static let osTargetKey = "omarchy_target"
-  /// Payload metadata: the only value `osTargetKey` may have.
+  /// Payload metadata: the value `osTargetKey` has for a full OS.
   public static let fullOSTarget = "apple-silicon-full-os"
+  /// Payload metadata: the value `osTargetKey` has for a UEFI-only environment.
+  public static let uefiTarget = "apple-silicon-uefi"
   /// Payload metadata: the `recovery_gui` value that selects the native
   /// Recovery app.
   public static let nativeRecoveryGUI = "omarchy-native-v1"

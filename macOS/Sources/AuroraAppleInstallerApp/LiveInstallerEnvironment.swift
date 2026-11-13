@@ -525,10 +525,14 @@ final class LiveInstallerEnvironment: InstallerEnvironment, @unchecked Sendable 
           }) == true
         else { throw InstallerPlanPreparationError.targetUnavailable }
       }
+      let defaultTargetBytes =
+        selection.distribution.supportsDesktop
+        ? InstallerAllocationRecommendation.balancedTargetBytes
+        : (inventory.candidates.first?.recommendedInstallBytes ?? 3_221_225_472)
       do {
         recommendation = try InstallerAllocationRecommendation(
           inventory: inventory,
-          targetBytes: auroraBytes ?? InstallerAllocationRecommendation.balancedTargetBytes,
+          targetBytes: auroraBytes ?? defaultTargetBytes,
           reservedBytes: planningReserve, target: target,
           snapshotConstraint: { APFSSnapshotInspector().constraint(in: host.storage) })
       } catch InstallerAllocationRecommendationError.noEligibleCandidate {
@@ -549,9 +553,13 @@ final class LiveInstallerEnvironment: InstallerEnvironment, @unchecked Sendable 
       else { throw InstallerPlanPreparationError.targetUnavailable }
     } else {
       if !existing.isEmpty { return .existingInstallChoice(existing) }
+      let defaultTargetBytes =
+        selection.distribution.supportsDesktop
+        ? InstallerAllocationRecommendation.balancedTargetBytes
+        : (inventory.candidates.first?.recommendedInstallBytes ?? 3_221_225_472)
       recommendation = try InstallerAllocationRecommendation(
         inventory: inventory,
-        targetBytes: auroraBytes ?? InstallerAllocationRecommendation.balancedTargetBytes,
+        targetBytes: auroraBytes ?? defaultTargetBytes,
         reservedBytes: planningReserve,
         snapshotConstraint: {
           APFSSnapshotInspector().constraint(in: host.storage)

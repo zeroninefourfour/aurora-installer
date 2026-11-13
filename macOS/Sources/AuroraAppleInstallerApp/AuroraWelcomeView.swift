@@ -6,7 +6,10 @@ struct AuroraWelcomeView: View {
   @Binding var selection: AuroraInstallationSelection
   var device: MacHeaderDisplay = .unknown
   var onContinue: () -> Void
-  private let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 18), count: 3)
+  private let distributionColumns = Array(
+    repeating: GridItem(.flexible(minimum: 0), spacing: 18), count: 4)
+  private let desktopColumns = Array(
+    repeating: GridItem(.flexible(minimum: 0), spacing: 18), count: 3)
 
   var body: some View {
     VStack(spacing: 0) {
@@ -18,7 +21,7 @@ struct AuroraWelcomeView: View {
         .inPageColumn().padding(.top, 28)
       VStack(alignment: .leading, spacing: 10) {
         sectionTitle("Distribution")
-        LazyVGrid(columns: columns, spacing: 18) {
+        LazyVGrid(columns: distributionColumns, spacing: 18) {
           ForEach(AuroraDistribution.allCases) { distribution in
             SelectionCard(
               selected: selection.distribution == distribution, label: distribution.title
@@ -31,9 +34,9 @@ struct AuroraWelcomeView: View {
             }
           }
         }
-        sectionTitle("Desktop environment").padding(.top, 12)
         if selection.distribution.supportsDesktop {
-          LazyVGrid(columns: columns, spacing: 18) {
+          sectionTitle("Desktop environment").padding(.top, 12)
+          LazyVGrid(columns: desktopColumns, spacing: 18) {
             ForEach(AuroraDesktop.allCases) { desktop in
               SelectionCard(selected: selection.desktop == desktop, label: desktop.title) {
                 selection.desktop = desktop
@@ -77,6 +80,9 @@ struct AuroraWelcomeView: View {
         + "Arch Linux or Arch Linux ARM projects."
     case .nixos:
       "Aurora NixOS is based on NixOS and is not provided or endorsed by the NixOS project."
+    case .uefi:
+      "UEFI Environment Only provides U-Boot and aura and is not provided or endorsed by Apple Inc. "
+        + "It configures the boot environment without installing an OS distribution."
     }
   }
 

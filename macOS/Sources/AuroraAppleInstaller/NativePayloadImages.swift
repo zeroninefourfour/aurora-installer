@@ -26,9 +26,13 @@
       -> any NativePayloadImagesExecuting
     {
       let approved = try EngineHandoffPackageImporter().executionPlan(package, owner: owner)
+      let tree = try NativeHandoffFileTree(package.packageURL, protected: true, owner: owner)
+      let metadata = try tree.read(package.metadataURL.lastPathComponent, maximum: 65_536)
+      let target = try NativePayloadPreflight.target(metadata)
+      let partitions = target["partitions"] as? [[String: Any]] ?? []
+      let names = partitions.compactMap { $0["image"] as? String }
       let archive = try await IPSWArchive.open(
         NativePayloadRangeReader(package.payloadURL, owner: owner))
-      let names = ["boot.img", "root.img"]
       let members = try names.map { name in
         let found = archive.members.filter { $0.name == name && !$0.isDirectory }
         guard found.count == 1, found[0].sizeBytes > 0, found[0].sizeBytes % 4096 == 0 else {
@@ -62,7 +66,7 @@
       }
       guard transcript.checkpoints.map(\.identifier) == ["apfs-target-prepared"],
         try file.diskPreparationCanResume(),
-        members.map(\.name) == ["boot.img", "root.img"]
+        members.isEmpty || members.map(\.name) == ["boot.img", "root.img"]
       else { throw NativeOSPartitionError.changedLayout }
       let receipt = try JSONDecoder().decode(
         NativeOSPartitionsExecution.Receipt.self,
@@ -74,8 +78,8 @@
         from: file.readEvidence("native-os-partition-baseline"))
       recordedLayout.partitions.append(contentsOf: receipt.partitions)
       recordedLayout.partitions.sort { $0.offset < $1.offset }
-      guard receipt.plan == approved.planDigest, receipt.partitions.count == 3,
-        receipt.layout.parts.count == 3,
+      guard receipt.plan == approved.planDigest,
+        receipt.partitions.count == receipt.layout.parts.count,
         NativeESPLabelAdmission.matches(
           baseline, recorded: recordedLayout,
           espUUID: receipt.partitions[0].uuid, label: receipt.layout.parts[0].fatLabel)

@@ -64,6 +64,24 @@
       XCTAssertEqual(NativeKnownInstallations.espLabel(for: "Fedora Aurora Remix"), "EFI - FEDOR")
       XCTAssertEqual(NativeKnownInstallations.espLabel(for: "Aurora ALARM"), "EFI - AUROR")
       XCTAssertEqual(NativeKnownInstallations.espLabel(for: "Aurora NixOS"), "EFI - AUROR")
+      XCTAssertEqual(NativeKnownInstallations.espLabel(for: "UEFI Environment Only"), "EFI - UEFI ")
+      XCTAssertEqual(NativeKnownInstallations.espLabel(for: "UEFI boot"), "EFI - UEFI ")
+    }
+
+    func testUEFIOnlyInstallWithOnlyStubAndESPIsRecognized() throws {
+      let disk = try fixture("UEFI Environment Only")
+      var snapshot = disk.snapshot
+      snapshot.partitions.removeAll { ["disk0s6", "disk0s7"].contains($0.identifier) }
+      let result = try NativeKnownInstallations.recognize(
+        NativeCollectedDisk(snapshot: snapshot, containers: disk.containers))
+      XCTAssertEqual(result.count, 1)
+      let stub = try XCTUnwrap(snapshot.partitions.first { $0.identifier == "disk0s4" })
+      let esp = try XCTUnwrap(snapshot.partitions.first { $0.identifier == "disk0s5" })
+      XCTAssertEqual(
+        result.first,
+        NativeKnownInstallation(
+          sourceIdentifier: "disk0s4",
+          offsetBytes: stub.offset, lengthBytes: esp.end - stub.offset))
     }
 
     func testNormalMacOSUnrelatedLinuxAndIncompleteLayoutsDoNotMatch() throws {

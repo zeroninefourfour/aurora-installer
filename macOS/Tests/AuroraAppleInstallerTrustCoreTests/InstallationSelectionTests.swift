@@ -12,7 +12,18 @@ final class InstallationSelectionTests: XCTestCase {
         "fedora-kde", "fedora-gnome", "fedora-minimal",
         "arch-kde", "arch-gnome", "arch-minimal",
         "nixos-kde", "nixos-gnome", "nixos-minimal",
+        "uefi",
       ])
+  }
+
+  func testUEFIEnvironmentOnlyHasItsOwnProfileWithoutDesktop() throws {
+    let selection = AuroraInstallationSelection(distribution: .uefi)
+    XCTAssertNil(selection.effectiveDesktop)
+    XCTAssertEqual(selection.profileID, "uefi")
+    XCTAssertEqual(selection.summary, "UEFI Environment Only")
+    XCTAssertFalse(selection.distribution.supportsDesktop)
+    try selection.requireMatchingProfile("uefi")
+    XCTAssertThrowsError(try selection.requireMatchingProfile("fedora-kde"))
   }
 
   func testNixOSKeepsItsDesktopInTheSignedProfile() {

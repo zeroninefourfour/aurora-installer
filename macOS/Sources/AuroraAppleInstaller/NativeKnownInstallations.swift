@@ -45,28 +45,47 @@
         guard let stub = row.partition, stub.type == "Apple_APFS",
           let container = disk.containers.first(where: { $0.storeUUID == stub.uuid })
         else { continue }
-        guard index + 3 < rows.count else {
-          if let partial = partial(rows, at: index, disk: disk) { result.append(partial) }
-          continue
-        }
         guard container.capacity == stub.size, container.free <= container.capacity else {
           throw NativeInspectionError.invalidLayout
         }
         let systems = container.systems.filter { $0.stub && recognizedTitles.contains($0.label) }
         guard !systems.isEmpty else { continue }
-        let members = rows[index...index + 3].compactMap(\.partition)
-        guard members.count == 4, members[1].type == "EFI",
-          members[2].type == "Linux Filesystem", members[3].type == "Linux Filesystem",
-          systems.contains(where: { members[1].name == espLabel(for: $0.label) })
-        else {
-          if let partial = partial(rows, at: index, disk: disk) { result.append(partial) }
-          continue
+        if index + 3 < rows.count {
+          let members = rows[index...index + 3].compactMap(\.partition)
+          if members.count == 4, members[1].type == "EFI",
+            members[2].type == "Linux Filesystem", members[3].type == "Linux Filesystem",
+            systems.contains(where: {
+              let label = espLabel(for: $0.label)
+              return members[1].name == label
+                || members[1].name == label.trimmingCharacters(in: .whitespaces)
+            })
+          {
+            let end = try NativeInspectionMath.add(members[3].offset, members[3].size)
+            result.append(
+              NativeKnownInstallation(
+                sourceIdentifier: stub.identifier,
+                offsetBytes: stub.offset, lengthBytes: end - stub.offset))
+            continue
+          }
         }
-        let end = try NativeInspectionMath.add(members[3].offset, members[3].size)
-        result.append(
-          NativeKnownInstallation(
-            sourceIdentifier: stub.identifier,
-            offsetBytes: stub.offset, lengthBytes: end - stub.offset))
+        if index + 1 < rows.count {
+          let members = rows[index...index + 1].compactMap(\.partition)
+          if members.count == 2, members[1].type == "EFI",
+            systems.contains(where: {
+              let label = espLabel(for: $0.label)
+              return members[1].name == label
+                || members[1].name == label.trimmingCharacters(in: .whitespaces)
+            })
+          {
+            let end = try NativeInspectionMath.add(members[1].offset, members[1].size)
+            result.append(
+              NativeKnownInstallation(
+                sourceIdentifier: stub.identifier,
+                offsetBytes: stub.offset, lengthBytes: end - stub.offset))
+            continue
+          }
+        }
+        if let partial = partial(rows, at: index, disk: disk) { result.append(partial) }
       }
       return result
     }

@@ -98,7 +98,9 @@
     }
 
     func target() throws -> Template {
-      let matching = templates.filter { $0.target == "apple-silicon-full-os" }
+      let matching = templates.filter {
+        $0.target == PublishedContractNames.fullOSTarget || $0.target == PublishedContractNames.uefiTarget
+      }
       guard matching.count == 1, let target = matching.first, !target.name.isEmpty,
         !target.partitions.isEmpty, target.partitions.count <= 128
       else { throw NativeInspectionError.invalidMetadata }

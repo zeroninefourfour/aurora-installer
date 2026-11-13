@@ -22,11 +22,13 @@
         let templates = document["os_list"] as? [[String: Any]]
       else { throw NativeOSPartitionError.invalidMetadata }
       let selected = templates.filter {
-        $0[PublishedContractNames.osTargetKey] as? String == PublishedContractNames.fullOSTarget
+        let target = $0[PublishedContractNames.osTargetKey] as? String
+        return target == PublishedContractNames.fullOSTarget || target == PublishedContractNames.uefiTarget
       }
       guard selected.count == 1, let template = selected.first,
         let label = template["default_os_name"] as? String, !label.isEmpty,
-        let rows = template["partitions"] as? [[String: Any]], rows.count == 3,
+        let rows = template["partitions"] as? [[String: Any]],
+        rows.count == 1 || rows.count == 3,
         available > 0, available % 4096 == 0
       else { throw NativeOSPartitionError.invalidMetadata }
       let minimum = try rows.reduce(UInt64(0)) { total, row in
@@ -38,24 +40,15 @@
       }
       guard available >= minimum else { throw NativeOSPartitionError.invalidMetadata }
       var result = [Part]()
-      for (index, row) in rows.enumerated() {
-        let name = ["EFI", "Boot", "Root"][index]
-        let type = index == 0 ? "EFI" : "Linux"
-        guard row["name"] as? String == name, row["type"] as? String == type,
-          (row["expand"] as? Bool ?? false) == (index == 2),
-          row["expand"] == nil || row["expand"] is Bool,
-          index == 0 ? row["format"] as? String == "fat" : row["format"] == nil,
-          index == 0
-            ? row["source"] as? String == "esp"
-            : row["image"] as? String == (index == 1 ? "boot.img" : "root.img"),
-          index == 0 ? row["image"] == nil : row["source"] == nil
+      if rows.count == 1 {
+        let row = rows[0]
+        guard row["name"] as? String == "EFI", row["type"] as? String == "EFI",
+          row["format"] as? String == "fat", row["source"] as? String == "esp",
+          row["image"] == nil
         else { throw NativeOSPartitionError.invalidMetadata }
-        let base = try NativeInspectionMath.alignUp(
-          NativeInstallationMetadata.bytes(row["size"] as! String))
-        let bytes = try NativeInspectionMath.add(base, index == 2 ? available - minimum : 0)
         let volumeID: String?
         if let value = row["volume_id"] {
-          guard index == 0, let text = value as? String,
+          guard let text = value as? String,
             text.range(of: #"\A(?:0[xX])?[0-9A-Fa-f]{1,8}\z"#, options: .regularExpression) != nil
           else { throw NativeOSPartitionError.invalidMetadata }
           volumeID = text
@@ -63,15 +56,49 @@
           volumeID = nil
         }
         let excluded = CharacterSet(charactersIn: "*?/\\|,;:+=<>[]\"")
-        let clean = (name + " - " + label).unicodeScalars.filter { !excluded.contains($0) }
+        let clean = ("EFI - " + label).unicodeScalars.filter { !excluded.contains($0) }
         let ascii = String(String.UnicodeScalarView(clean)).decomposedStringWithCompatibilityMapping
           .unicodeScalars.filter { $0.isASCII && $0.value >= 32 && $0.value != 127 }
         let fatLabel = String(String.UnicodeScalarView(ascii).prefix(11))
-        guard index != 0 || !fatLabel.isEmpty else { throw NativeOSPartitionError.invalidMetadata }
+        guard !fatLabel.isEmpty else { throw NativeOSPartitionError.invalidMetadata }
         result.append(
-          Part(
-            name: name, type: type, bytes: bytes,
-            fatLabel: index == 0 ? fatLabel : nil, volumeID: volumeID))
+          Part(name: "EFI", type: "EFI", bytes: available, fatLabel: fatLabel, volumeID: volumeID))
+      } else {
+        for (index, row) in rows.enumerated() {
+          let name = ["EFI", "Boot", "Root"][index]
+          let type = index == 0 ? "EFI" : "Linux"
+          guard row["name"] as? String == name, row["type"] as? String == type,
+            (row["expand"] as? Bool ?? false) == (index == 2),
+            row["expand"] == nil || row["expand"] is Bool,
+            index == 0 ? row["format"] as? String == "fat" : row["format"] == nil,
+            index == 0
+              ? row["source"] as? String == "esp"
+              : row["image"] as? String == (index == 1 ? "boot.img" : "root.img"),
+            index == 0 ? row["image"] == nil : row["source"] == nil
+          else { throw NativeOSPartitionError.invalidMetadata }
+          let base = try NativeInspectionMath.alignUp(
+            NativeInstallationMetadata.bytes(row["size"] as! String))
+          let bytes = try NativeInspectionMath.add(base, index == 2 ? available - minimum : 0)
+          let volumeID: String?
+          if let value = row["volume_id"] {
+            guard index == 0, let text = value as? String,
+              text.range(of: #"\A(?:0[xX])?[0-9A-Fa-f]{1,8}\z"#, options: .regularExpression) != nil
+            else { throw NativeOSPartitionError.invalidMetadata }
+            volumeID = text
+          } else {
+            volumeID = nil
+          }
+          let excluded = CharacterSet(charactersIn: "*?/\\|,;:+=<>[]\"")
+          let clean = (name + " - " + label).unicodeScalars.filter { !excluded.contains($0) }
+          let ascii = String(String.UnicodeScalarView(clean)).decomposedStringWithCompatibilityMapping
+            .unicodeScalars.filter { $0.isASCII && $0.value >= 32 && $0.value != 127 }
+          let fatLabel = String(String.UnicodeScalarView(ascii).prefix(11))
+          guard index != 0 || !fatLabel.isEmpty else { throw NativeOSPartitionError.invalidMetadata }
+          result.append(
+            Part(
+              name: name, type: type, bytes: bytes,
+              fatLabel: index == 0 ? fatLabel : nil, volumeID: volumeID))
+        }
       }
       parts = result
     }

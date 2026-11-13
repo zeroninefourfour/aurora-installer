@@ -1,19 +1,20 @@
 import Foundation
 
 public enum AuroraDistribution: String, CaseIterable, Codable, Identifiable, Sendable {
-  case fedora, arch, nixos
+  case fedora, arch, nixos, uefi
   public var id: String { rawValue }
   public var title: String {
     switch self {
     case .fedora: "Aurora Fedora Remix"
     case .arch: "Aurora Alarm"
     case .nixos: "Aurora NixOS"
+    case .uefi: "UEFI Environment Only"
     }
   }
   /// Names earlier installers gave these installations. Erase Linux and
   /// reinstall still recognize them.
-  public static let legacyTitles = ["Fedora Aurora Remix", "Aurora ALARM"]
-  public var supportsDesktop: Bool { true }
+  public static let legacyTitles = ["Fedora Aurora Remix", "Aurora ALARM", "UEFI boot"]
+  public var supportsDesktop: Bool { self != .uefi }
 }
 
 public enum AuroraDesktop: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -43,16 +44,24 @@ public struct AuroraInstallationSelection: Equatable, Codable, Sendable {
     distribution.supportsDesktop ? desktop : nil
   }
   public var profileID: String {
-    distribution.rawValue + "-" + desktop.rawValue
+    distribution.supportsDesktop
+      ? distribution.rawValue + "-" + desktop.rawValue
+      : distribution.rawValue
   }
   public var summary: String {
-    distribution.title + " · " + desktop.title
+    distribution.supportsDesktop
+      ? distribution.title + " · " + desktop.title
+      : distribution.title
   }
   public static var allProfileIDs: Set<String> {
     Set(
       AuroraDistribution.allCases.flatMap { distribution in
-        AuroraDesktop.allCases.map {
-          AuroraInstallationSelection(distribution: distribution, desktop: $0).profileID
+        if distribution.supportsDesktop {
+          return AuroraDesktop.allCases.map {
+            AuroraInstallationSelection(distribution: distribution, desktop: $0).profileID
+          }
+        } else {
+          return [AuroraInstallationSelection(distribution: distribution).profileID]
         }
       })
   }

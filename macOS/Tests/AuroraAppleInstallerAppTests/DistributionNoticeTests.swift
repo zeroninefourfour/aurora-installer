@@ -63,7 +63,9 @@
       XCTAssertEqual(AuroraDistribution.fedora.title, "Aurora Fedora Remix")
       XCTAssertEqual(AuroraDistribution.arch.title, "Aurora Alarm")
       XCTAssertEqual(AuroraDistribution.nixos.title, "Aurora NixOS")
-      XCTAssertEqual(AuroraDistribution.legacyTitles, ["Fedora Aurora Remix", "Aurora ALARM"])
+      XCTAssertEqual(AuroraDistribution.uefi.title, "UEFI Environment Only")
+      XCTAssertEqual(
+        AuroraDistribution.legacyTitles, ["Fedora Aurora Remix", "Aurora ALARM", "UEFI boot"])
     }
   }
 #endif
