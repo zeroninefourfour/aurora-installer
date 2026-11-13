@@ -30,7 +30,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.repository == 'aurora-silicon/aurora-installer'
+    if: github.repository == 'aurora-silicon/aurora-installer' || github.repository == 'zeroninefourfour/aurora-installer'
     runs-on: macos-26
     timeout-minutes: 90
     env:
